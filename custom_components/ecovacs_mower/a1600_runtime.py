@@ -146,6 +146,24 @@ class A1600Runtime:
         events.subscribe(SchedulesEvent, self._on_schedules)
         events.subscribe(AnimProtectEvent, self._on_anim)
         events.subscribe(AutoCutDirectionEvent, self._on_auto_cut)
+        # The map arrives in answer to the getMI upstream sends when it subscribes
+        # to MowerMapInfoEvent — before these subscriptions exist. EventBus keeps
+        # the last event even with no subscriber and drops an equal one later, so
+        # a re-sent identical map would never reach us: seed from what it kept.
+        for event_type, handler in (
+            (A1600LayersEvent, self._on_layers),
+            (AvoidPointsEvent, self._on_avoid),
+            (AreaSetEvent, self._on_area_set),
+            (AreaParametersEvent, self._on_params),
+            (SchedulesEvent, self._on_schedules),
+            (AnimProtectEvent, self._on_anim),
+            (AutoCutDirectionEvent, self._on_auto_cut),
+        ):
+            if (last := events.get_last_event(event_type)) is not None:
+                await handler(last)
+        # Areas and islands share one event type, so only the later of the two
+        # was kept; ask again, the alternating kinds are never equal.
+        events.request_refresh(AreaSetEvent)
         self._unsubs.append(
             async_track_time_interval(self.hass, self._periodic_refresh, MAP_REFRESH_INTERVAL)
         )
