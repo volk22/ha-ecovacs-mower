@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GOAT map card harness</title>
+<style>
+  :root {
+    --primary-color: #03a9f4; --text-primary-color: #fff;
+    --primary-text-color: #212121; --secondary-text-color: #727272;
+    --card-background-color: #fff; --secondary-background-color: #eef1ee;
+    --divider-color: rgba(0,0,0,.12); --page-bg: #fafafa;
+  }
+  body.dark {
+    --primary-color: #03a9f4; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
+    --card-background-color: #1c1c1c; --secondary-background-color: #282828;
+    --divider-color: rgba(225,225,225,.12); --page-bg: #111;
+  }
+  body { margin: 0; padding: 16px; font-family: system-ui, -apple-system, Roboto, sans-serif;
+    background: var(--page-bg); color: var(--primary-text-color); }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .bar button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--divider-color);
+    background: var(--card-background-color); color: var(--primary-text-color); cursor: pointer; }
+  .wrap { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .slot h3 { font-size: 13px; font-weight: 500; color: var(--secondary-text-color); margin: 0 0 6px; }
+  .s1 { width: 400px; height: 520px; } .s2 { width: 1000px; height: 700px; max-width: 100%; }
+  #log { margin-top: 16px; font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap;
+    background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: 8px;
+    padding: 8px; max-height: 200px; overflow: auto; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button id="dark">Тёмная тема</button>
+  <button id="lang">Язык: ru/en</button>
+  <button id="bump">Обновить состояние (last_updated)</button>
+  <button id="mow">Симуляция кошения</button>
+  <button id="fail">Ошибка API: выкл</button>
+</div>
+<div class="wrap">
+  <div class="slot"><h3>400 × 520</h3><div class="s1"><ecovacs-goat-map-card id="c1"></ecovacs-goat-map-card></div></div>
+  <div class="slot"><h3>1000 × 700</h3><div class="s2"><ecovacs-goat-map-card id="c2"></ecovacs-goat-map-card></div></div>
+</div>
+<div id="log"></div>
+
+<script type="module">
+import '../ecovacs-goat-map-card.js';
+
+const logEl = document.getElementById('log');
+const log = (...a) => { console.log('[harness]', ...a); logEl.textContent = `${new Date().toLocaleTimeString()}  ${a.map((x) => typeof x === 'string' ? x : JSON.stringify(x)).join(' ')}\n` + logEl.textContent; };
+
+const sample = await fetch('./map_sample.json').then((r) => r.json());
+const data = structuredClone(sample); // mutable backend state
+let failApi = false, lang = 'ru', mowTimer = null;
+
+const now = () => new Date().toISOString();
+const states = {
+  'lawn_mower.goat': { entity_id: 'lawn_mower.goat', state: 'docked', last_updated: now(),
+    attributes: { friendly_name: 'GOAT A1600', battery_level: 100 } },
+  'image.goat_map': { entity_id: 'image.goat_map', state: now(), last_updated: now(),
+    attributes: { entity_picture: '/api/image_proxy/image.goat_map?token=x' } },
+};
+
+function makeHass() {
+  return {
+    language: lang,
+    states: { ...states },
+    callApi: async (method, path) => {
+      log('callApi', method, path);
+      await new Promise((r) => setTimeout(r, 150));
+      if (failApi) throw { body: { message: 'HTTP 500 (mock)' } };
+      return structuredClone(data);
+    },
+    callService: async (domain, service, d) => {
+      log('callService', `${domain}.${service}`, d);
+      if (domain === 'ecovacs_mower' && service === 'delete_avoid_point') {
+        data.avoid_points = data.avoid_points.filter((p) => String(p.mssid) !== String(d.mssid));
+      }
+      if (domain === 'lawn_mower') {
+        const st = { start_mowing: 'mowing', pause: 'paused', dock: 'returning' }[service];
+        if (st) setState(st);
+      }
+    },
+  };
+}
+
+const cards = [document.getElementById('c1'), document.getElementById('c2')];
+cards[0].setConfig({ entity: 'lawn_mower.goat', height: 400 });
+cards[1].setConfig({ entity: 'lawn_mower.goat', title: 'Газон', height: 580 });
+const push = () => { const h = makeHass(); cards.forEach((c) => { c.hass = h; }); };
+
+function setState(st) {
+  states['lawn_mower.goat'] = { ...states['lawn_mower.goat'], state: st, last_updated: now() };
+  data.state = st; data.mowing = st === 'mowing';
+  push();
+}
+
+document.getElementById('dark').onclick = () => document.body.classList.toggle('dark');
+document.getElementById('lang').onclick = () => { lang = lang === 'ru' ? 'en' : 'ru'; push(); };
+document.getElementById('bump').onclick = () => {
+  states['lawn_mower.goat'] = { ...states['lawn_mower.goat'], last_updated: now() };
+  push();
+};
+document.getElementById('fail').onclick = (e) => { failApi = !failApi; e.target.textContent = `Ошибка API: ${failApi ? 'вкл' : 'выкл'}`; };
+document.getElementById('mow').onclick = () => {
+  if (mowTimer) { clearInterval(mowTimer); mowTimer = null; setState('docked'); data.position = [4, 0]; return; }
+  data.lanes = []; data.track = [[0, 0]];
+  let i = 0;
+  setState('mowing');
+  mowTimer = setInterval(() => {
+    // zig-zag across the south part of the lawn
+    const row = Math.floor(i / 20), t = i % 20;
+    const x = 12000 + (row % 2 ? 19 - t : t) * 550, y = -9000 - row * 450;
+    const prev = data.track[data.track.length - 1];
+    data.heading = Math.atan2(y - prev[1], x - prev[0]) * 180 / Math.PI;
+    data.position = [x, y]; data.track.push([x, y]);
+    if (t === 19) data.lanes.push([[12000, y], [12000 + 19 * 550, y]]);
+    data.battery = Math.max(20, 100 - i / 5);
+    states['lawn_mower.goat'].attributes = { ...states['lawn_mower.goat'].attributes, battery_level: Math.round(data.battery) };
+    states['image.goat_map'] = { ...states['image.goat_map'], last_updated: now() };
+    i++; push();
+  }, 700);
+};
+
+push();
+log('harness ready');
+</script>
+</body>
+</html>

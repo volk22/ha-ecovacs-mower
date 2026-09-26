@@ -137,7 +137,8 @@ function chaikin(pts, closed, passes = 2) {
   return p;
 }
 
-const smoothClosed = (pts, on) => (on ? chaikin(douglasPeuckerClosed(pts, DP_TOLERANCE), true) : pts);
+// Only dense chain-code outlines are smoothed; hand-drawn polygons (few vertices) keep sharp corners.
+const smoothClosed = (pts, on) => (on && pts.length > 20 ? chaikin(douglasPeuckerClosed(pts, DP_TOLERANCE), true) : pts);
 const smoothOpen = (pts, on) => (on ? chaikin(douglasPeucker(pts, DP_TOLERANCE), false) : pts);
 
 function pathD(pts, closed) {
@@ -478,7 +479,7 @@ class EcovacsGoatMapCard extends HTMLElement {
     const nogo = (d.nogo || []).map((it) => ({ id: it.id, pts: smoothClosed(ptsOf(it), sm) })).filter((n) => n.pts.length > 2);
     const obstacles = (d.obstacles || []).map((it) => {
       const raw = ptsOf(it);
-      return { id: it.id, pts: raw.length > 20 ? smoothClosed(raw, sm) : raw };
+      return { id: it.id, pts: smoothClosed(raw, sm) };
     }).filter((o) => o.pts.length);
     return {
       boundaryRaw, boundary: boundaryRaw.length > 2 ? smoothClosed(boundaryRaw, sm) : [],
@@ -616,10 +617,12 @@ class EcovacsGoatMapCard extends HTMLElement {
     if (!pts.length) pts.push([0, 0]);
     const b = bbox(pts);
     let w = Math.max(2000, (b.x1 - b.x0) * 1.1), h = Math.max(2000, (b.y1 - b.y0) * 1.1);
-    const aspect = ch / cw;
+    const top = ch > 200 ? 44 : 0; // keep the toolbar strip free
+    const aspect = (ch - top) / cw;
     if (h / w > aspect) w = h / aspect; else h = w * aspect;
+    const u = w / cw;
     const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
-    this._vb = { x: cx - w / 2, y: cy - h / 2, w, h };
+    this._vb = { x: cx - w / 2, y: cy - h / 2 - top * u, w, h: ch * u };
     this._fitW = w;
     this._scheduleApply();
   }
@@ -684,7 +687,7 @@ class EcovacsGoatMapCard extends HTMLElement {
       e.preventDefault();
       const p = local(e);
       const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
-      this._zoomAt(p.x, p.y, Math.exp(clamp(dy, -300, 300) * 0.0018));
+      this._zoomAt(p.x, p.y, Math.exp(clamp(dy, -300, 300) * 0.0012));
     }, { passive: false });
 
     // Block Safari page-level pinch zoom over the map.
