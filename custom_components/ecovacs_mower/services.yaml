@@ -11,3 +11,97 @@ mow_area:
         text:
           multiple: true
           type: number
+
+# ---- A1600 fork (a1600_runtime.py) ----
+refresh_map:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: ecovacs_mower
+          domain: lawn_mower
+delete_avoid_point:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: ecovacs_mower
+          domain: lawn_mower
+    mssid:
+      required: true
+      example: "1"
+      selector:
+        text:
+set_area_parameter:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: ecovacs_mower
+          domain: lawn_mower
+    area_id:
+      example: "1"
+      selector:
+        text:
+    mow_height_level:
+      selector:
+        number:
+          min: 1
+          max: 12
+    cut_mode:
+      selector:
+        select:
+          options: ["4", "6", "7"]
+    obstacle_height:
+      selector:
+        select:
+          options: ["1", "2", "3"]
+    angle:
+      selector:
+        number:
+          min: 0
+          max: 359
+schedule_task:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: ecovacs_mower
+          domain: lawn_mower
+    action:
+      required: true
+      selector:
+        select:
+          options: ["add", "mod", "del", "enable", "disable"]
+    ssid:
+      selector:
+        text:
+    sDay:
+      selector:
+        number:
+          min: 0
+          max: 6
+    sTime:
+      example: "09:30"
+      selector:
+        text:
+    eTime:
+      example: "19:00"
+      selector:
+        text:
+    mowType:
+      selector:
+        select:
+          options: ["1", "2", "3"]
+    ids:
+      selector:
+        text:
+    duration:
+      selector:
+        number:
+          min: 0
+          max: 86400

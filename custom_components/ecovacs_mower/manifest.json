@@ -1,13 +1,23 @@
 {
   "domain": "ecovacs_mower",
   "name": "Ecovacs Mower",
-  "codeowners": ["@nord-"],
+  "codeowners": [
+    "@nord-"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/nord-/ha-ecovacs-mower",
   "integration_type": "hub",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/nord-/ha-ecovacs-mower/issues",
-  "loggers": ["deebot_client"],
-  "requirements": ["deebot-client==18.5.1"],
-  "version": "0.9.1"
+  "loggers": [
+    "deebot_client"
+  ],
+  "requirements": [
+    "deebot-client==18.5.1"
+  ],
+  "version": "0.9.1-a1600.1",
+  "dependencies": [
+    "http",
+    "frontend"
+  ]
 }

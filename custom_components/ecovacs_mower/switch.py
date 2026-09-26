@@ -28,6 +28,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from . import a1600_entities
 from . import EcovacsMowerConfigEntry
 from .deebot_patch.commands import SetRainDelay
 from .deebot_patch.messages import MowerRainDelayEvent
@@ -117,6 +118,10 @@ async def async_setup_entry(
     )
     if entities:
         async_add_entities(entities)
+
+    # A1600 fork: extra entities (a1600_entities.py).
+    if extra := a1600_entities.switches(config_entry.runtime_data):
+        async_add_entities(extra)
 
 
 class EcovacsSwitchEntity(

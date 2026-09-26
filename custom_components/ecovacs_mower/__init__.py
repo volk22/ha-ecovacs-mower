@@ -10,6 +10,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from .const import CONF_CREDENTIALS, DOMAIN
+from .a1600_runtime import async_setup_global
 from .controller import EcovacsController, async_remove_map_store
 
 PLATFORMS = [
@@ -19,8 +20,10 @@ PLATFORMS = [
     Platform.IMAGE,
     Platform.LAWN_MOWER,
     Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.TIME,
 ]
 
 type EcovacsMowerConfigEntry = ConfigEntry[EcovacsController]
@@ -85,6 +88,8 @@ async def async_setup_entry(
     entry.async_on_unload(controller.teardown)
     await controller.initialize()
     entry.runtime_data = controller
+    # A1600 fork: map API, services and the map card (a1600_runtime.py).
+    await async_setup_global(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
