@@ -302,6 +302,17 @@ class GetAutoCutDirection(_Get, OnAutoCutDirection):
     NAME = "getAutoCutDirection"
 
 
+class AppPing(ExecuteCommand):
+    """``appping {}`` — the app's "someone is looking" lease.
+
+    The app sends it before ``getMI`` when its map opens. Without a live lease
+    the mower acks ``getMI`` but pushes no map (observed 26.09.2026: with the
+    app closed, getMI -> ack and nothing; with the lease, onMI/onArI follow).
+    """
+
+    NAME = "appping"
+
+
 class GetSpecialContour(ExecuteCommand):
     """``getSpecialContour {mid, type:0}``; the answer is an ack, data is pushed."""
 
@@ -411,6 +422,8 @@ def refresh_events() -> dict[type[Event], list[Any]]:
     with the map.
     """
     return {
+        # appping is sent first, sequentially, by the runtime (see
+        # A1600Runtime.refresh_map); refresh commands here run concurrently.
         MowerMapInfoEvent: [GetMI(), GetSpecialContour()],
         AreaSetEvent: [GetAreaSet("ar"), GetAreaSet("vw")],
         AreaParametersEvent: [GetAreaParameter()],

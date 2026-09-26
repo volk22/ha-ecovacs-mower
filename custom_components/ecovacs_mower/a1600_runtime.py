@@ -39,6 +39,7 @@ from .deebot_patch.a1600 import (
     A1600_CLASSES,
     A1600LayersEvent,
     AnimProtectEvent,
+    AppPing,
     AreaParametersEvent,
     AreaSetEvent,
     AutoCutDirectionEvent,
@@ -161,9 +162,11 @@ class A1600Runtime:
         ):
             if (last := events.get_last_event(event_type)) is not None:
                 await handler(last)
-        # Areas and islands share one event type, so only the later of the two
-        # was kept; ask again, the alternating kinds are never equal.
-        events.request_refresh(AreaSetEvent)
+        # Upstream's startup getMI went out without the appping lease, which the
+        # mower needs before it pushes the map; ask again properly. This also
+        # re-asks areas and islands, which share one event type (only the later
+        # of the two was kept; alternating kinds are never equal).
+        self.refresh_map()
         self._unsubs.append(
             async_track_time_interval(self.hass, self._periodic_refresh, MAP_REFRESH_INTERVAL)
         )
@@ -180,7 +183,11 @@ class A1600Runtime:
         self.refresh_map()
 
     def refresh_map(self) -> None:
-        """Ask the mower for its map (``getMI`` + ``getSpecialContour``) and areas."""
+        """Ask the mower for its map: ``appping`` lease first, then ``getMI`` and areas."""
+        self.hass.async_create_task(self._async_refresh_map())
+
+    async def _async_refresh_map(self) -> None:
+        await self.device.execute_command(AppPing())
         self.device.events.request_refresh(MowerMapInfoEvent)
         self.device.events.request_refresh(AreaSetEvent)
 
