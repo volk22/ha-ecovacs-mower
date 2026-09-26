@@ -679,6 +679,24 @@ class GetMapInfoV2(ExecuteCommand):
         super().__init__({"type": "0"})
 
 
+class GetMI(ExecuteCommand):
+    """Ask for the lawn map on firmware that speaks ``onMI`` (A1600 LiDAR, <= 1.17).
+
+    Same pattern as ``GetMapInfoV2``: the reply is an ack and the geometry
+    follows on the ``atr`` topic as ``onMI`` / ``onArI`` / ``onSpecialContour``.
+    Observed on a GOAT A1600 LiDAR Pro (``e4gqia``, fw 1.13.10): the official
+    app sends ``appping`` then ``getMI {"type": "0"}`` when its map opens, and
+    the mower answers ``{"code": 0, "msg": "ok"}`` and pushes the full map.
+    Firmware that does not know the command answers with an error code, which
+    the event bus logs and otherwise ignores.
+    """
+
+    NAME = "getMI"
+
+    def __init__(self) -> None:
+        super().__init__({"type": "0"})
+
+
 class SetRainDelay(ExecuteCommand):
     """Write the rain sensor's setting and its post-rain hold.
 

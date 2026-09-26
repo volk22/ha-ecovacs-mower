@@ -20,6 +20,7 @@ from .commands import (
     CleanMower,
     GetLifeSpanMower,
     GetMapInfoV2,
+    GetMI,
     GetProtectState,
     GetRainDelay,
     GetStatsMower,
@@ -223,7 +224,7 @@ async def patch_device_info(class_: str) -> None:
                 MowerRainDelayEvent: [GetRainDelay()],
                 MowerStatsEvent: [GetStatsMower()],
                 MowerBeaconsEvent: [GetLifeSpanMower(capabilities.life_span.types)],
-                MowerMapInfoEvent: [GetMapInfoV2()],
+                MowerMapInfoEvent: [GetMapInfoV2(), GetMI()],
             }
         ),
     )
