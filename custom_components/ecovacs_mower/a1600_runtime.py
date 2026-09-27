@@ -339,8 +339,8 @@ def _session_summary(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": item.get("id"),
         "start": start,
-        # area comes in m², duration ("last") in seconds, like the app shows.
-        "area_m2": area,
+        # area comes in cm² (262.5 m² arrives as 2625400), "last" in seconds.
+        "area_m2": round(int(area) / 10000, 1) if str(area or "").isdigit() else area,
         "duration_min": round(int(last) / 60) if str(last or "").isdigit() else last,
         "stop_reason": item.get("stopReason"),
         "type": item.get("type"),
