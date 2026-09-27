@@ -307,6 +307,34 @@ class AvoidPointsSensor(_A1600Entity, SensorEntity):
         return {"points": self.runtime.state.avoid_points, "map_updated": self.runtime.state.map_updated}
 
 
+class LastMowingSensor(_A1600Entity, SensorEntity):
+    """Start of the newest mowing session; the recent sessions in attributes."""
+
+    _attr_icon = "mdi:history"
+    _attr_device_class = "timestamp"
+
+    def __init__(self, runtime: A1600Runtime) -> None:
+        super().__init__(runtime, "last_mowing", "Last mowing")
+
+    @property
+    def native_value(self) -> Any:
+        from homeassistant.util import dt as dt_util
+
+        sessions = self.runtime.state.sessions
+        return dt_util.parse_datetime(sessions[0]["start"]) if sessions and sessions[0].get("start") else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        s = self.runtime.state
+        first = s.sessions[0] if s.sessions else {}
+        return {
+            "area_m2": first.get("area_m2"),
+            "duration_min": first.get("duration_min"),
+            "sessions": s.sessions[:20],
+            "error": s.history_error,
+        }
+
+
 # -------------------------------------------------------------- per platform
 
 
@@ -331,4 +359,4 @@ def times(controller: EcovacsController) -> list[Entity]:
 
 
 def sensors(controller: EcovacsController) -> list[Entity]:
-    return [e for r in _runtimes_for(controller) for e in (ScheduleSensor(r), AvoidPointsSensor(r))]
+    return [e for r in _runtimes_for(controller) for e in (ScheduleSensor(r), AvoidPointsSensor(r), LastMowingSensor(r))]

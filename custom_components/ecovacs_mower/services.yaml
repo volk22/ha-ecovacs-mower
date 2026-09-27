@@ -105,3 +105,11 @@ schedule_task:
         number:
           min: 0
           max: 86400
+fetch_history:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: ecovacs_mower
+          domain: lawn_mower

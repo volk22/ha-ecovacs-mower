@@ -49,6 +49,7 @@ from .deebot_patch.a1600 import (
     SetAreaParameter,
     SetSchedules,
 )
+from .deebot_patch.a1600_history import HistoryError, list_sessions, session_detail, track_segments
 from .deebot_patch.map_messages import MowerMapInfoEvent
 
 if TYPE_CHECKING:
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 MAP_REFRESH_INTERVAL = timedelta(minutes=30)
+HISTORY_REFRESH_INTERVAL = timedelta(hours=2)
 STORE_VERSION = 1
 SAVE_DELAY = 10
 SIGNAL_UPDATE = f"{DOMAIN}_a1600_update_{{}}"
@@ -86,10 +88,14 @@ class A1600State:
     anim_protect: dict[str, Any] | None = None
     auto_cut_direction: bool | None = None
     map_updated: str | None = None
+    sessions: list[dict[str, Any]] = field(default_factory=list)
+    last_session_lanes: list[list[list[int]]] = field(default_factory=list)
+    history_error: str | None = None
 
     _STORED = (
         "boundary", "islands", "edges", "obstacles", "area_ids",
         "avoid_points", "nogo", "areas", "island_rows", "map_updated",
+        "sessions", "last_session_lanes",
     )
 
     def stored(self) -> dict[str, Any]:
@@ -170,6 +176,10 @@ class A1600Runtime:
         self._unsubs.append(
             async_track_time_interval(self.hass, self._periodic_refresh, MAP_REFRESH_INTERVAL)
         )
+        self._unsubs.append(
+            async_track_time_interval(self.hass, self._periodic_history, HISTORY_REFRESH_INTERVAL)
+        )
+        self.hass.async_create_task(self.async_refresh_history())
 
     async def async_stop(self) -> None:
         """Flush and detach."""
@@ -190,6 +200,33 @@ class A1600Runtime:
         await self.device.execute_command(AppPing())
         self.device.events.request_refresh(MowerMapInfoEvent)
         self.device.events.request_refresh(AreaSetEvent)
+
+    @callback
+    def _periodic_history(self, _now: Any = None) -> None:
+        self.hass.async_create_task(self.async_refresh_history())
+
+    async def async_refresh_history(self) -> list[dict[str, Any]]:
+        """Fetch the session list, and the mowed track of the newest session."""
+        authenticator = self.controller._authenticator  # noqa: SLF001
+        try:
+            raw = await list_sessions(authenticator, self.device.device_info)
+            sessions = [_session_summary(item) for item in raw]
+            lanes: list[list[list[int]]] = self.state.last_session_lanes
+            if sessions and sessions[0]["id"] and (
+                not self.state.sessions or self.state.sessions[0]["id"] != sessions[0]["id"] or not lanes
+            ):
+                detail = await session_detail(authenticator, sessions[0]["id"])
+                lanes = track_segments(detail.get("mapTrack"))
+        except (HistoryError, OSError, TimeoutError, ValueError, KeyError) as err:
+            self.state.history_error = str(err)
+            _LOGGER.warning("Mowing history unavailable: %s", err)
+            self._changed()
+            return self.state.sessions
+        self.state.sessions = sessions
+        self.state.last_session_lanes = lanes
+        self.state.history_error = None
+        self._changed(save=True)
+        return sessions
 
     def refresh_settings(self) -> None:
         """Re-read parameters and schedules after a write."""
@@ -282,7 +319,32 @@ class A1600Runtime:
             data["lanes"] = [
                 [list(a), list(b)] for segments in mower_map.lanes.values() for a, b in segments
             ]
+        if not data["lanes"]:
+            # Docked: show what the last session mowed.
+            data["lanes"] = s.last_session_lanes
         return data
+
+
+def _session_summary(item: dict[str, Any]) -> dict[str, Any]:
+    """Keep the useful fields of one ``clean_result/list`` entry."""
+    from homeassistant.util import dt as dt_util
+
+    ts = item.get("ts") or item.get("start")
+    try:
+        start = dt_util.utc_from_timestamp(int(ts) / (1000 if int(ts) > 1e11 else 1)).isoformat()
+    except (TypeError, ValueError):
+        start = None
+    area = item.get("area")
+    last = item.get("last")
+    return {
+        "id": item.get("id"),
+        "start": start,
+        # area comes in m², duration ("last") in seconds, like the app shows.
+        "area_m2": area,
+        "duration_min": round(int(last) / 60) if str(last or "").isdigit() else last,
+        "stop_reason": item.get("stopReason"),
+        "type": item.get("type"),
+    }
 
 
 # ------------------------------------------------------------------ registry
@@ -428,6 +490,17 @@ async def async_setup_global(hass: HomeAssistant) -> None:
         runtime.refresh_settings()
 
     hass.services.async_register(DOMAIN, "refresh_map", refresh_map, vol.Schema(_ENTITY))
+
+    async def fetch_history(call: ServiceCall) -> dict[str, Any]:
+        sessions = await _runtime_for_entity(hass, call.data["entity_id"]).async_refresh_history()
+        return {"sessions": sessions}
+
+    from homeassistant.core import SupportsResponse
+
+    hass.services.async_register(
+        DOMAIN, "fetch_history", fetch_history, vol.Schema(_ENTITY),
+        supports_response=SupportsResponse.OPTIONAL,
+    )
     hass.services.async_register(
         DOMAIN,
         "delete_avoid_point",
