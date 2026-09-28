@@ -26,6 +26,9 @@ from typing import TYPE_CHECKING, Any
 from aiohttp import web
 import voluptuous as vol
 
+from deebot_client.events import StateEvent
+from deebot_client.models import State
+
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -60,6 +63,9 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 MAP_REFRESH_INTERVAL = timedelta(minutes=30)
+# The mower streams onPos/onMapTrack only while an appping lease is live; the
+# app renews it about every 240 s (lease ~300 s). Renewed while a job runs.
+LEASE_INTERVAL = timedelta(seconds=240)
 HISTORY_REFRESH_INTERVAL = timedelta(hours=2)
 STORE_VERSION = 1
 SAVE_DELAY = 10
@@ -179,6 +185,10 @@ class A1600Runtime:
         self._unsubs.append(
             async_track_time_interval(self.hass, self._periodic_history, HISTORY_REFRESH_INTERVAL)
         )
+        self._unsubs.append(
+            async_track_time_interval(self.hass, self._renew_lease, LEASE_INTERVAL)
+        )
+        events.subscribe(StateEvent, self._on_state)
         self.hass.async_create_task(self.async_refresh_history())
 
     async def async_stop(self) -> None:
@@ -200,6 +210,20 @@ class A1600Runtime:
         await self.device.execute_command(AppPing())
         self.device.events.request_refresh(MowerMapInfoEvent)
         self.device.events.request_refresh(AreaSetEvent)
+
+    def _job_running(self) -> bool:
+        last = self.device.events.get_last_event(StateEvent)
+        return last is not None and last.state in (State.CLEANING, State.RETURNING, State.PAUSED)
+
+    @callback
+    def _renew_lease(self, _now: Any = None) -> None:
+        if self._job_running():
+            self.hass.async_create_task(self.device.execute_command(AppPing()))
+
+    async def _on_state(self, event: StateEvent) -> None:
+        # Start the live stream as soon as a job starts, not up to 4 min later.
+        if event.state in (State.CLEANING, State.RETURNING):
+            await self.device.execute_command(AppPing())
 
     @callback
     def _periodic_history(self, _now: Any = None) -> None:
