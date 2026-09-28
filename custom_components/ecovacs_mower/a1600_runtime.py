@@ -451,6 +451,49 @@ class A1600MapView(HomeAssistantView):
         return self.json(data)
 
 
+async def _async_register_card(hass: HomeAssistant, card: Path) -> None:
+    """Load the card as a Lovelace module resource, falling back to an extra JS URL.
+
+    ``add_extra_js_url`` only reaches pages loaded after this integration set
+    up; a browser that merely reconnects after an HA restart keeps its old page
+    and shows "Configuration error" until a full reload. A storage-mode Lovelace
+    resource is loaded by the dashboard itself before it creates cards. The
+    ``?v=`` token is a hash of the file, so browsers refetch only on change.
+    (Same approach as Janverhu/ecovacs-goat-g1 1.2.0, frontend.py.)
+    """
+    import hashlib
+    from urllib.parse import urlsplit
+
+    from homeassistant.components.frontend import add_extra_js_url
+
+    def _hash() -> str:
+        return hashlib.sha256(card.read_bytes()).hexdigest()[:12]
+
+    try:
+        token = await hass.async_add_executor_job(_hash)
+    except OSError:
+        return
+    url = f"{CARD_URL}/{CARD_FILE}?v={token}"
+    path = f"{CARD_URL}/{CARD_FILE}"
+    try:
+        from homeassistant.components.lovelace.const import LOVELACE_DATA, MODE_STORAGE
+
+        data = hass.data.get(LOVELACE_DATA)
+        resources = getattr(data, "resources", None)
+        if data is None or getattr(data, "resource_mode", None) != MODE_STORAGE or resources is None:
+            raise LookupError("no storage-mode Lovelace resources")
+        await resources.async_get_info()
+        items = [i for i in resources.async_items() if urlsplit(str(i.get("url", ""))).path == path]
+        if not items:
+            await resources.async_create_item({"res_type": "module", "url": url})
+        for item in items:
+            if item.get("url") != url and item.get("id"):
+                await resources.async_update_item(item["id"], {"url": url})
+    except Exception:  # noqa: BLE001 - the card must never block setup
+        _LOGGER.debug("Lovelace resource registration failed; using extra JS URL", exc_info=True)
+        add_extra_js_url(hass, url)
+
+
 # ----------------------------------------------------------------- services
 
 _ENTITY = {vol.Required("entity_id"): cv.entity_id}
@@ -467,10 +510,7 @@ async def async_setup_global(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(CARD_URL, str(frontend_dir), cache_headers=False)]
     )
-    from homeassistant.components.frontend import add_extra_js_url
-
-    version = (frontend_dir / CARD_FILE).stat().st_mtime_ns if (frontend_dir / CARD_FILE).exists() else 0
-    add_extra_js_url(hass, f"{CARD_URL}/{CARD_FILE}?v={version}")
+    await _async_register_card(hass, frontend_dir / CARD_FILE)
 
     async def refresh_map(call: ServiceCall) -> None:
         _runtime_for_entity(hass, call.data["entity_id"]).refresh_map()

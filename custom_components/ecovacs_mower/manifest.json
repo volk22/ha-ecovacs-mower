@@ -18,6 +18,7 @@
   "version": "0.9.1-a1600.1",
   "dependencies": [
     "http",
-    "frontend"
+    "frontend",
+    "lovelace"
   ]
 }
