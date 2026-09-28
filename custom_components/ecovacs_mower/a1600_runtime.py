@@ -397,9 +397,6 @@ class A1600Runtime:
             data["lanes"] = [
                 [list(a), list(b)] for segments in mower_map.lanes.values() for a, b in segments
             ]
-        if not data["lanes"]:
-            # Docked: show what the last session mowed.
-            data["lanes"] = s.last_session_lanes
         return data
 
 

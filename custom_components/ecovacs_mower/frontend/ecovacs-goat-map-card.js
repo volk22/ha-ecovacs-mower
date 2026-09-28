@@ -190,8 +190,11 @@ svg.world { position: absolute; left: 0; top: 0; width: 100%; height: 100%; disp
 svg.world.drag { cursor: grabbing; }
 .ns { vector-effect: non-scaling-stroke; }
 .lawn { fill: #9fd26b; stroke: #5a9a37; stroke-width: 2; fill-rule: evenodd; }
-.lane { stroke: rgba(255,255,255,.12); stroke-width: 120; stroke-linecap: round; fill: none; }
-.swath { fill: none; stroke: rgba(255,255,255,.34); stroke-width: 230; stroke-linejoin: round; stroke-linecap: round; }
+/* During a job onMapTrack carries the rows still to mow (A1600): the lawn is
+   painted as mowed and the remaining rows as long grass. */
+.L-lawn.job .lawn { fill: #cfe8ad; }
+.lane { stroke: #6aa33f; stroke-width: 260; stroke-linecap: butt; fill: none; }
+.swath { fill: none; stroke: rgba(255,255,255,.18); stroke-width: 230; stroke-linejoin: round; stroke-linecap: round; }
 .bed { fill: #b89068; stroke: #8a6743; stroke-width: 1.5; fill-opacity: .9; }
 .nogo { fill: url(#hatch); stroke: #e53935; stroke-width: 2; }
 .edge { fill: none; stroke: rgba(255,255,255,.95); stroke-linecap: round; stroke-linejoin: round; }
@@ -525,9 +528,11 @@ class EcovacsGoatMapCard extends HTMLElement {
 
   _renderDynamic() {
     const d = this._data;
-    // Mowed lanes: physical stripes in mm (scale with zoom on purpose).
+    // Remaining rows of the running job: physical stripes in mm (scale with zoom on purpose).
     const lanes = Array.isArray(d.lanes) ? d.lanes : [];
-    this._g.lanes.innerHTML = lanes.filter((l) => Array.isArray(l) && isPt(l[0]) && isPt(l[1])).map((l) => {
+    const job = lanes.length > 0 && d.state !== 'docked';
+    this._g.lawn.classList.toggle('job', job);
+    this._g.lanes.innerHTML = (job ? lanes : []).filter((l) => Array.isArray(l) && isPt(l[0]) && isPt(l[1])).map((l) => {
       const a = flip(l[0]), b = flip(l[1]);
       return `<path class="lane" d="M${a[0]} ${a[1]}L${b[0]} ${b[1]}"/>`;
     }).join('');
