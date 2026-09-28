@@ -27,6 +27,8 @@ from aiohttp import web
 import voluptuous as vol
 
 from deebot_client.events import StateEvent
+from deebot_client.events.map import PositionsEvent
+from deebot_client.rs.map import PositionType
 from deebot_client.models import State
 
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
@@ -54,6 +56,7 @@ from .deebot_patch.a1600 import (
 )
 from .deebot_patch.a1600_history import HistoryError, list_sessions, session_detail, track_segments
 from .deebot_patch.map_messages import MowerMapInfoEvent
+from .deebot_patch.messages import MowerJobEdgeEvent
 
 if TYPE_CHECKING:
     from deebot_client.device import Device
@@ -63,6 +66,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 MAP_REFRESH_INTERVAL = timedelta(minutes=30)
+JOB_TRACK_MAX_POINTS = 40000
+JOB_TRACK_MIN_STEP_MM = 40
 # The mower streams onPos/onMapTrack only while an appping lease is live; the
 # app renews it about every 240 s (lease ~300 s). Renewed while a job runs.
 LEASE_INTERVAL = timedelta(seconds=240)
@@ -97,11 +102,12 @@ class A1600State:
     sessions: list[dict[str, Any]] = field(default_factory=list)
     last_session_lanes: list[list[list[int]]] = field(default_factory=list)
     history_error: str | None = None
+    job_track: list[list[int]] = field(default_factory=list)
 
     _STORED = (
         "boundary", "islands", "edges", "obstacles", "area_ids",
         "avoid_points", "nogo", "areas", "island_rows", "map_updated",
-        "sessions", "last_session_lanes",
+        "sessions", "last_session_lanes", "job_track",
     )
 
     def stored(self) -> dict[str, Any]:
@@ -190,6 +196,8 @@ class A1600Runtime:
             async_track_time_interval(self.hass, self._renew_lease, LEASE_INTERVAL)
         )
         events.subscribe(StateEvent, self._on_state)
+        events.subscribe(PositionsEvent, self._on_positions)
+        events.subscribe(MowerJobEdgeEvent, self._on_job_edge)
         self.hass.async_create_task(self.async_refresh_history())
 
     async def async_stop(self) -> None:
@@ -236,6 +244,30 @@ class A1600Runtime:
             # unknown for the rest of the job. Only in that case, and only while
             # the position keeps moving, publish "cleaning".
             self.device.events.notify(StateEvent(State.CLEANING))
+
+    async def _on_positions(self, event: PositionsEvent) -> None:
+        """Keep this job's path on disk, so the mowed swath survives HA restarts."""
+        last = self.device.events.get_last_event(StateEvent)
+        if last is not None and last.state not in (State.CLEANING, State.RETURNING, State.PAUSED):
+            return
+        for position in event.positions:
+            if position.type is not PositionType.DEEBOT:
+                continue
+            point = [position.x, position.y]
+            track = self.state.job_track
+            if track and abs(track[-1][0] - point[0]) + abs(track[-1][1] - point[1]) < JOB_TRACK_MIN_STEP_MM:
+                continue
+            track.append(point)
+            if len(track) > JOB_TRACK_MAX_POINTS:
+                del track[: len(track) - JOB_TRACK_MAX_POINTS]
+            self._store.async_delay_save(self.state.stored, 30)
+
+    async def _on_job_edge(self, event: MowerJobEdgeEvent) -> None:
+        # A new job clears the path; "reborn"/"continue" is the same job
+        # resuming after a charge break.
+        if event.phase == "start" and event.trigger not in ("reborn", "continue"):
+            self.state.job_track = []
+            self._changed(save=True)
 
     async def _on_state(self, event: StateEvent) -> None:
         # Start the live stream as soon as a job starts, not up to 4 min later.
@@ -326,7 +358,12 @@ class A1600Runtime:
         self._changed()
 
     async def execute(self, command: Any) -> None:
-        """Send a write command and fail the service call if it is not acknowledged."""
+        """Send a write command and fail the service call if it is not acknowledged.
+
+        The app holds an appping lease whenever it writes; without one the
+        mower answered setSpecialContour with 10001 "fail" (28.09.2026).
+        """
+        await self.device.execute_command(AppPing())
         if not await self.device.execute_command(command):
             raise HomeAssistantError(
                 f"The mower did not confirm {command.NAME}; see the deebot_client log"
@@ -356,7 +393,7 @@ class A1600Runtime:
             data["dock"] = list(mower_map.dock)
             data["position"] = list(mower_map.position) if mower_map.position else None
             data["heading"] = mower_map.heading
-            data["track"] = [list(p) for p in mower_map.track]
+            data["track"] = s.job_track or [list(p) for p in mower_map.track]
             data["lanes"] = [
                 [list(a), list(b)] for segments in mower_map.lanes.values() for a, b in segments
             ]
