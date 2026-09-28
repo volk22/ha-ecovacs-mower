@@ -190,7 +190,8 @@ svg.world { position: absolute; left: 0; top: 0; width: 100%; height: 100%; disp
 svg.world.drag { cursor: grabbing; }
 .ns { vector-effect: non-scaling-stroke; }
 .lawn { fill: #9fd26b; stroke: #5a9a37; stroke-width: 2; fill-rule: evenodd; }
-.lane { stroke: rgba(255,255,255,.28); stroke-width: 220; stroke-linecap: round; fill: none; }
+.lane { stroke: rgba(255,255,255,.12); stroke-width: 120; stroke-linecap: round; fill: none; }
+.swath { fill: none; stroke: rgba(255,255,255,.34); stroke-width: 230; stroke-linejoin: round; stroke-linecap: round; }
 .bed { fill: #b89068; stroke: #8a6743; stroke-width: 1.5; fill-opacity: .9; }
 .nogo { fill: url(#hatch); stroke: #e53935; stroke-width: 2; }
 .edge { fill: none; stroke: rgba(255,255,255,.95); stroke-linecap: round; stroke-linejoin: round; }
@@ -532,7 +533,12 @@ class EcovacsGoatMapCard extends HTMLElement {
     }).join('');
 
     const track = (Array.isArray(d.track) ? d.track : []).filter(isPt).map(flip);
-    this._g.track.innerHTML = track.length > 1 ? `<path class="track ns" d="${pathD(douglasPeucker(track, 20), false)}"/>` : '';
+    // The mowed swath: the live track drawn at blade width (~23 cm, in mm so it
+    // scales with the map). onMapTrack lanes look like the remaining plan on the
+    // A1600, so the swath is what "mowed" means here.
+    const trackD = track.length > 1 ? pathD(douglasPeucker(track, 20), false) : '';
+    this._g.lanes.insertAdjacentHTML('beforeend', trackD ? `<path class="swath" d="${trackD}"/>` : '');
+    this._g.track.innerHTML = trackD ? `<path class="track ns" d="${trackD}"/>` : '';
 
     // Avoid points: 1 m dashed circle in world units + screen-sized icon and hit target.
     this._g.avoid.innerHTML = (d.avoid_points || []).filter((p) => isFinite(p.x) && isFinite(p.y)).map((p) => {
