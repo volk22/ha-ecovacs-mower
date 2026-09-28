@@ -146,6 +146,7 @@ class A1600Runtime:
         self.state = A1600State(self.did)
         self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, f"{DOMAIN}.a1600_{self.did}")
         self._unsubs: list[Callable[[], None]] = []
+        self._last_lease_position: tuple[int, int] | None = None
 
     async def async_start(self) -> None:
         """Restore, subscribe (which sends the refresh commands), start the timer."""
@@ -213,12 +214,28 @@ class A1600Runtime:
 
     def _job_running(self) -> bool:
         last = self.device.events.get_last_event(StateEvent)
-        return last is not None and last.state in (State.CLEANING, State.RETURNING, State.PAUSED)
+        if last is not None and last.state in (State.CLEANING, State.RETURNING, State.PAUSED):
+            return True
+        # After an HA restart mid-job the state stays unknown until the mower
+        # next reports it; a position that is still moving means a job runs.
+        mower_map = self.controller.maps.get(self.did)
+        if mower_map is None or mower_map.position is None:
+            return False
+        moved = mower_map.position != self._last_lease_position
+        self._last_lease_position = mower_map.position
+        return moved
 
     @callback
     def _renew_lease(self, _now: Any = None) -> None:
-        if self._job_running():
-            self.hass.async_create_task(self.device.execute_command(AppPing()))
+        if not self._job_running():
+            return
+        self.hass.async_create_task(self.device.execute_command(AppPing()))
+        if self.device.events.get_last_event(StateEvent) is None:
+            # Upstream deliberately ignores the polled "idle" (GOAT always says
+            # so) and waits for a push, so a restart mid-job leaves the state
+            # unknown for the rest of the job. Only in that case, and only while
+            # the position keeps moving, publish "cleaning".
+            self.device.events.notify(StateEvent(State.CLEANING))
 
     async def _on_state(self, event: StateEvent) -> None:
         # Start the live stream as soon as a job starts, not up to 4 min later.
