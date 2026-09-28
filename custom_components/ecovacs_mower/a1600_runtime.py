@@ -612,6 +612,20 @@ async def async_setup_global(hass: HomeAssistant) -> None:
 
     from homeassistant.core import SupportsResponse
 
+    async def session_detail_service(call: ServiceCall) -> dict[str, Any]:
+        runtime = _runtime_for_entity(hass, call.data["entity_id"])
+        sid = call.data.get("session_id") or (runtime.state.sessions[0]["id"] if runtime.state.sessions else None)
+        if not sid:
+            raise ServiceValidationError("No session known yet")
+        detail = await session_detail(runtime.controller._authenticator, sid)  # noqa: SLF001
+        return {"session_id": sid, "detail": detail}
+
+    hass.services.async_register(
+        DOMAIN, "session_detail", session_detail_service,
+        vol.Schema({**_ENTITY, vol.Optional("session_id"): str}),
+        supports_response=SupportsResponse.ONLY,
+    )
+
     hass.services.async_register(
         DOMAIN, "fetch_history", fetch_history, vol.Schema(_ENTITY),
         supports_response=SupportsResponse.OPTIONAL,

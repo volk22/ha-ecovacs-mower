@@ -113,3 +113,14 @@ fetch_history:
         entity:
           integration: ecovacs_mower
           domain: lawn_mower
+session_detail:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: ecovacs_mower
+          domain: lawn_mower
+    session_id:
+      selector:
+        text:
