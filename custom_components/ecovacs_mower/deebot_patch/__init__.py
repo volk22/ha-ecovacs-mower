@@ -16,6 +16,7 @@ from deebot_client.events import StateEvent
 from deebot_client.hardware import _DEVICES
 from deebot_client.messages.json import MESSAGES
 
+from .a1600 import register_messages as register_a1600_messages
 from .authentication import AccountAuthenticator
 from .commands import CleanMower, GetCleanInfoMower, MowerStateRefresh, has_family
 from .families import attempted_family_name
@@ -124,6 +125,8 @@ def apply() -> None:
         if MESSAGES.get(message.NAME) is not message:
             _fail(f"registration of {message.NAME} did not take")
 
+    # A1600 fork: map layers, settings, schedules (see a1600.py).
+    register_a1600_messages()
     _LOGGER.debug("Message handlers registered")
 
 

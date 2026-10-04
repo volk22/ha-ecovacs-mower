@@ -72,6 +72,7 @@ from .deebot_patch.map_messages import (
     MowerObstaclesEvent,
 )
 from .fault import FaultLatch
+from . import a1600_runtime
 from .map import MowerMap
 
 _LOGGER = logging.getLogger(__name__)
@@ -335,6 +336,8 @@ class EcovacsController:
         device.events.subscribe(MowerCoveredAreaEvent, on_covered)
         device.events.subscribe(MowerNoGoZonesEvent, on_nogo)
         device.events.subscribe(PositionsEvent, on_positions)
+        # A1600 fork: id-carrying layers, settings, schedules (a1600_runtime.py).
+        await a1600_runtime.async_setup_device(self._hass, self, device)
 
     def _setup_fault_latch(self, device: Device) -> None:
         """Hold this mower's faults until something explicitly clears them.
@@ -403,6 +406,7 @@ class EcovacsController:
 
     async def teardown(self) -> None:
         """Disconnect controller."""
+        await a1600_runtime.async_teardown(self._hass, self)
         for unsub in self._unsub_polls.values():
             unsub()
         self._unsub_polls.clear()

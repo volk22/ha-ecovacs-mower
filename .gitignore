@@ -4,3 +4,4 @@ __pycache__/
 .coverage
 .venv/
 .claude/
+custom_components/ecovacs_mower/frontend/dev/map_sample.json

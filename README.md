@@ -1,3 +1,5 @@
+> **Fork note.** This is a fork of [nord-/ha-ecovacs-mower](https://github.com/nord-/ha-ecovacs-mower) v0.9.1 with extra support for the **GOAT A1600 LiDAR Pro** (`e4gqia`, firmware 1.13): the map is requested with `appping` + `getMI` (as the official app does), A1600 map layers are decoded with ids (boundary, islands, trim edges, obstacles, avoid points), an interactive Lovelace map card (`custom:ecovacs-goat-map-card`, registered automatically), per-area cutting settings, schedules, animal protection, avoid-point deletion, mowing history from the ECOVACS cloud, and a live mowed-swath view. All A1600 payloads were captured from the official app. Upstream credit and license (GPL-3.0) unchanged.
+
 # Ecovacs Mower for Home Assistant
 
 A Home Assistant custom integration for Ecovacs GOAT robot mowers, built to

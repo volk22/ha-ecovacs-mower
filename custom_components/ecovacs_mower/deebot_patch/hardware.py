@@ -25,6 +25,7 @@ from .commands import (
     GetStatsMower,
     MowerStateRefresh,
 )
+from .a1600 import A1600_CLASSES, refresh_events as a1600_refresh_events
 from .map_messages import MowerMapInfoEvent
 from .messages import (
     MowerBeaconsEvent,
@@ -224,6 +225,9 @@ async def patch_device_info(class_: str) -> None:
                 MowerStatsEvent: [GetStatsMower()],
                 MowerBeaconsEvent: [GetLifeSpanMower(capabilities.life_span.types)],
                 MowerMapInfoEvent: [GetMapInfoV2()],
+                # A1600 fork: getMI instead of getMapInfo_V2, plus the
+                # settings/schedule refreshes (see a1600.py).
+                **(a1600_refresh_events() if class_ in A1600_CLASSES else {}),
             }
         ),
     )

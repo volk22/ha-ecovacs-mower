@@ -67,6 +67,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
+from . import a1600_entities
 from . import EcovacsMowerConfigEntry
 from .const import SUPPORTED_LIFESPANS
 from .deebot_patch import SUPPORTED_CLASSES
@@ -362,6 +363,10 @@ async def async_setup_entry(
         _async_setup_beacons(device, config_entry, async_add_entities)
 
     async_add_entities(entities)
+
+    # A1600 fork: extra entities (a1600_entities.py).
+    if extra := a1600_entities.sensors(config_entry.runtime_data):
+        async_add_entities(extra)
 
 
 @callback
