@@ -13,7 +13,7 @@
     "deebot_client"
   ],
   "requirements": [
-    "deebot-client==18.5.1"
+    "deebot-client==18.6.0"
   ],
   "version": "0.9.1-a1600.1",
   "dependencies": [
